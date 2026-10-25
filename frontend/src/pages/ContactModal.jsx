@@ -1,0 +1,244 @@
+import { useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { apiFetch } from "../api";
+import Select from "../components/Select";
+import DatePicker from "../components/DatePicker";
+
+const inputClass =
+  "w-full rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const labelClass = "mb-1 block text-sm font-medium text-ink-700";
+
+const STATUSES = ["actif", "inactif", "à recontacter"];
+const STATUS_OPTIONS = STATUSES.map((s) => ({ value: s, label: s }));
+
+const KNOWN_PLATFORMS = ["LinkedIn", "Instagram", "Twitter / X", "Facebook", "TikTok", "YouTube", "GitHub", "Site web"];
+const OTHER_PLATFORM = "__other__";
+const PLATFORM_OPTIONS = [...KNOWN_PLATFORMS.map((p) => ({ value: p, label: p })), { value: OTHER_PLATFORM, label: "Autre…" }];
+
+function emptyForm() {
+  return {
+    firstName: "",
+    lastName: "",
+    photoUrl: "",
+    meetingDate: "",
+    meetingPlace: "",
+    email: "",
+    phone: "",
+    company: "",
+    jobTitle: "",
+    socialPlatform: "",
+    socialUrl: "",
+    category: "",
+    notes: "",
+    status: "actif",
+  };
+}
+
+function toForm(contact) {
+  if (!contact) return emptyForm();
+  return {
+    ...emptyForm(),
+    ...contact,
+    meetingDate: contact.meetingDate ? contact.meetingDate.slice(0, 10) : "",
+    socialPlatform: contact.socialNetwork?.platform || "",
+    socialUrl: contact.socialNetwork?.url || "",
+  };
+}
+
+export default function ContactModal({ contact, onClose, onSaved }) {
+  const [form, setForm] = useState(() => toForm(contact));
+  const [customPlatform, setCustomPlatform] = useState(
+    () => Boolean(form.socialPlatform) && !KNOWN_PLATFORMS.includes(form.socialPlatform)
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef(null);
+  const isEdit = Boolean(contact);
+
+  function set(field) {
+    return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  }
+
+  function setValue(field) {
+    return (value) => setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  async function handlePhotoChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append("photo", file);
+      const data = await apiFetch("/api/contacts/upload-photo", { method: "POST", body, raw: true });
+      setForm((f) => ({ ...f, photoUrl: data.url }));
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    const payload = {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      photoUrl: form.photoUrl,
+      meetingDate: form.meetingDate || undefined,
+      meetingPlace: form.meetingPlace,
+      email: form.email,
+      phone: form.phone,
+      company: form.company,
+      jobTitle: form.jobTitle,
+      socialNetwork: { platform: form.socialPlatform, url: form.socialUrl },
+      category: form.category,
+      notes: form.notes,
+      status: form.status,
+    };
+    try {
+      if (isEdit) {
+        await apiFetch(`/api/contacts/${contact._id}`, { method: "PUT", body: payload });
+        toast.success("Contact mis à jour");
+      } else {
+        await apiFetch("/api/contacts", { method: "POST", body: payload });
+        toast.success("Contact ajouté");
+      }
+      onSaved();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-ink-900">{isEdit ? "Modifier le contact" : "Ajouter un contact"}</h2>
+          <button type="button" onClick={onClose} className="text-ink-500 hover:text-ink-900">
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex size-16 items-center justify-center overflow-hidden rounded-full bg-ink-100 text-ink-500">
+              {form.photoUrl ? (
+                <img src={form.photoUrl} alt="" className="size-full object-cover" />
+              ) : (
+                <span className="text-xl">{form.firstName?.[0] || "?"}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={uploading}
+              className="rounded-lg border border-ink-300 px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-100 disabled:opacity-60"
+            >
+              {uploading ? "Envoi…" : "Changer la photo"}
+            </button>
+            <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelClass}>Prénom</label>
+              <input required className={inputClass} value={form.firstName} onChange={set("firstName")} />
+            </div>
+            <div>
+              <label className={labelClass}>Nom</label>
+              <input required className={inputClass} value={form.lastName} onChange={set("lastName")} />
+            </div>
+            <div>
+              <label className={labelClass}>Email</label>
+              <input type="email" className={inputClass} value={form.email} onChange={set("email")} />
+            </div>
+            <div>
+              <label className={labelClass}>Téléphone</label>
+              <input className={inputClass} value={form.phone} onChange={set("phone")} />
+            </div>
+            <div>
+              <label className={labelClass}>Entreprise</label>
+              <input className={inputClass} value={form.company} onChange={set("company")} />
+            </div>
+            <div>
+              <label className={labelClass}>Poste occupé</label>
+              <input className={inputClass} value={form.jobTitle} onChange={set("jobTitle")} />
+            </div>
+            <div>
+              <label className={labelClass}>Date de rencontre</label>
+              <DatePicker value={form.meetingDate} onChange={setValue("meetingDate")} />
+            </div>
+            <div>
+              <label className={labelClass}>Lieu de rencontre</label>
+              <input className={inputClass} value={form.meetingPlace} onChange={set("meetingPlace")} />
+            </div>
+            <div>
+              <label className={labelClass}>Réseau social</label>
+              <Select
+                value={customPlatform ? OTHER_PLATFORM : form.socialPlatform}
+                onChange={(val) => {
+                  if (val === OTHER_PLATFORM) {
+                    setCustomPlatform(true);
+                    if (KNOWN_PLATFORMS.includes(form.socialPlatform)) setForm((f) => ({ ...f, socialPlatform: "" }));
+                  } else {
+                    setCustomPlatform(false);
+                    setForm((f) => ({ ...f, socialPlatform: val }));
+                  }
+                }}
+                options={PLATFORM_OPTIONS}
+              />
+              {customPlatform && (
+                <input
+                  autoFocus
+                  placeholder="Nom du réseau"
+                  className={`${inputClass} mt-2`}
+                  value={form.socialPlatform}
+                  onChange={set("socialPlatform")}
+                />
+              )}
+            </div>
+            <div>
+              <label className={labelClass}>Lien du profil</label>
+              <input className={inputClass} value={form.socialUrl} onChange={set("socialUrl")} />
+            </div>
+            <div>
+              <label className={labelClass}>Catégorie</label>
+              <input required list="categories" placeholder="Pro, Perso, Réseau…" className={inputClass} value={form.category} onChange={set("category")} />
+              <datalist id="categories">
+                <option value="Pro" />
+                <option value="Perso" />
+                <option value="Réseau" />
+              </datalist>
+            </div>
+            <div>
+              <label className={labelClass}>Statut</label>
+              <Select value={form.status} onChange={setValue("status")} options={STATUS_OPTIONS} />
+            </div>
+          </div>
+
+          <div>
+            <label className={labelClass}>Notes</label>
+            <textarea rows={3} className={inputClass} value={form.notes} onChange={set("notes")} />
+          </div>
+
+          <div className="mt-2 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="rounded-lg border border-ink-300 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-100">
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+            >
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
