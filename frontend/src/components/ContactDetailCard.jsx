@@ -46,7 +46,7 @@ export default function ContactDetailCard({ contact, onClose, onEdit, onDelete }
 
   if (!contact) return null;
 
-  const social = contact.socialNetwork?.url ? contact.socialNetwork : null;
+  const socials = (contact.socialNetworks || []).filter((sn) => sn.url);
   const meeting = [formatDate(contact.meetingDate), contact.meetingPlace].filter(Boolean).join(" · ");
 
   return (
@@ -105,13 +105,13 @@ export default function ContactDetailCard({ contact, onClose, onEdit, onDelete }
           )}
           {contact.phone && <Field label="Téléphone">{contact.phone}</Field>}
           {meeting && <Field label="Rencontre">{meeting}</Field>}
-          {social && (
-            <Field label={social.platform || "Réseau social"}>
-              <a href={social.url} target="_blank" rel="noreferrer" className="break-all text-brand-600 hover:underline">
-                {social.url}
+          {socials.map((sn, i) => (
+            <Field key={i} label={sn.platform || "Réseau social"}>
+              <a href={sn.url} target="_blank" rel="noreferrer" className="break-all text-brand-600 hover:underline">
+                {sn.url}
               </a>
             </Field>
-          )}
+          ))}
           {contact.notes && (
             <Field label="Notes">
               <p className="whitespace-pre-wrap text-ink-700">{contact.notes}</p>

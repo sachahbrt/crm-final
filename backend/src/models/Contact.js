@@ -12,10 +12,7 @@ const contactSchema = new mongoose.Schema(
     phone: { type: String },
     company: { type: String },
     jobTitle: { type: String },
-    socialNetwork: {
-      platform: { type: String },
-      url: { type: String },
-    },
+    socialNetworks: [{ platform: { type: String }, url: { type: String }, _id: false }],
     category: { type: String, required: true },
     notes: { type: String },
     status: {

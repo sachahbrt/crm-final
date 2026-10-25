@@ -14,7 +14,7 @@ const contactSchema = z.object({
   phone: z.string().optional(),
   company: z.string().optional(),
   jobTitle: z.string().optional(),
-  socialNetwork: z.object({ platform: z.string().optional(), url: z.string().optional() }).optional(),
+  socialNetworks: z.array(z.object({ platform: z.string().optional(), url: z.string().optional() })).optional(),
   category: z.string().min(1),
   notes: z.string().optional(),
   status: z.enum(STATUSES).optional(),

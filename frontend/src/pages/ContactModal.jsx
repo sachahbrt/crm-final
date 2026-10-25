@@ -26,8 +26,7 @@ function emptyForm() {
     phone: "",
     company: "",
     jobTitle: "",
-    socialPlatform: "",
-    socialUrl: "",
+    socialNetworks: [],
     category: "",
     notes: "",
     status: "actif",
@@ -40,16 +39,16 @@ function toForm(contact) {
     ...emptyForm(),
     ...contact,
     meetingDate: contact.meetingDate ? contact.meetingDate.slice(0, 10) : "",
-    socialPlatform: contact.socialNetwork?.platform || "",
-    socialUrl: contact.socialNetwork?.url || "",
+    socialNetworks: (contact.socialNetworks || []).map((sn) => ({
+      platform: sn.platform || "",
+      url: sn.url || "",
+      custom: Boolean(sn.platform) && !KNOWN_PLATFORMS.includes(sn.platform),
+    })),
   };
 }
 
 export default function ContactModal({ contact, onClose, onSaved }) {
   const [form, setForm] = useState(() => toForm(contact));
-  const [customPlatform, setCustomPlatform] = useState(
-    () => Boolean(form.socialPlatform) && !KNOWN_PLATFORMS.includes(form.socialPlatform)
-  );
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef(null);
@@ -61,6 +60,21 @@ export default function ContactModal({ contact, onClose, onSaved }) {
 
   function setValue(field) {
     return (value) => setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function addSocialNetwork() {
+    setForm((f) => ({ ...f, socialNetworks: [...f.socialNetworks, { platform: "", url: "", custom: false }] }));
+  }
+
+  function updateSocialNetwork(i, patch) {
+    setForm((f) => ({
+      ...f,
+      socialNetworks: f.socialNetworks.map((sn, idx) => (idx === i ? { ...sn, ...patch } : sn)),
+    }));
+  }
+
+  function removeSocialNetwork(i) {
+    setForm((f) => ({ ...f, socialNetworks: f.socialNetworks.filter((_, idx) => idx !== i) }));
   }
 
   async function handlePhotoChange(e) {
@@ -92,7 +106,9 @@ export default function ContactModal({ contact, onClose, onSaved }) {
       phone: form.phone,
       company: form.company,
       jobTitle: form.jobTitle,
-      socialNetwork: { platform: form.socialPlatform, url: form.socialUrl },
+      socialNetworks: form.socialNetworks
+        .filter((sn) => sn.platform || sn.url)
+        .map(({ platform, url }) => ({ platform, url })),
       category: form.category,
       notes: form.notes,
       status: form.status,
@@ -177,35 +193,6 @@ export default function ContactModal({ contact, onClose, onSaved }) {
               <input className={inputClass} value={form.meetingPlace} onChange={set("meetingPlace")} />
             </div>
             <div>
-              <label className={labelClass}>Réseau social</label>
-              <Select
-                value={customPlatform ? OTHER_PLATFORM : form.socialPlatform}
-                onChange={(val) => {
-                  if (val === OTHER_PLATFORM) {
-                    setCustomPlatform(true);
-                    if (KNOWN_PLATFORMS.includes(form.socialPlatform)) setForm((f) => ({ ...f, socialPlatform: "" }));
-                  } else {
-                    setCustomPlatform(false);
-                    setForm((f) => ({ ...f, socialPlatform: val }));
-                  }
-                }}
-                options={PLATFORM_OPTIONS}
-              />
-              {customPlatform && (
-                <input
-                  autoFocus
-                  placeholder="Nom du réseau"
-                  className={`${inputClass} mt-2`}
-                  value={form.socialPlatform}
-                  onChange={set("socialPlatform")}
-                />
-              )}
-            </div>
-            <div>
-              <label className={labelClass}>Lien du profil</label>
-              <input className={inputClass} value={form.socialUrl} onChange={set("socialUrl")} />
-            </div>
-            <div>
               <label className={labelClass}>Catégorie</label>
               <input required list="categories" placeholder="Pro, Perso, Réseau…" className={inputClass} value={form.category} onChange={set("category")} />
               <datalist id="categories">
@@ -218,6 +205,54 @@ export default function ContactModal({ contact, onClose, onSaved }) {
               <label className={labelClass}>Statut</label>
               <Select value={form.status} onChange={setValue("status")} options={STATUS_OPTIONS} />
             </div>
+          </div>
+
+          <div>
+            <label className={labelClass}>Réseaux sociaux</label>
+            <div className="flex flex-col gap-2">
+              {form.socialNetworks.map((sn, i) => (
+                <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                  <div className="sm:w-48 sm:shrink-0">
+                    <Select
+                      value={sn.custom ? OTHER_PLATFORM : sn.platform}
+                      onChange={(val) =>
+                        updateSocialNetwork(i, val === OTHER_PLATFORM ? { custom: true, platform: "" } : { custom: false, platform: val })
+                      }
+                      options={PLATFORM_OPTIONS}
+                    />
+                    {sn.custom && (
+                      <input
+                        autoFocus
+                        placeholder="Nom du réseau"
+                        className={`${inputClass} mt-2`}
+                        value={sn.platform}
+                        onChange={(e) => updateSocialNetwork(i, { platform: e.target.value })}
+                      />
+                    )}
+                  </div>
+                  <input
+                    placeholder="Lien du profil"
+                    className={`${inputClass} flex-1`}
+                    value={sn.url}
+                    onChange={(e) => updateSocialNetwork(i, { url: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSocialNetwork(i)}
+                    className="shrink-0 rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+                  >
+                    Retirer
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addSocialNetwork}
+              className="mt-2 text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              + Ajouter un réseau
+            </button>
           </div>
 
           <div>
