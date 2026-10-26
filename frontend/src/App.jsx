@@ -6,6 +6,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import ConfirmEmail from "./pages/ConfirmEmail";
+import TooManyRequests from "./pages/TooManyRequests";
 import OAuthCallback from "./pages/OAuthCallback";
 import Dashboard from "./pages/Dashboard";
 import Contacts from "./pages/Contacts";
@@ -21,6 +23,8 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
+      <Route path="/confirm-email/:token" element={<ConfirmEmail />} />
+      <Route path="/trop-de-requetes" element={<TooManyRequests />} />
       <Route path="/oauth-callback" element={<OAuthCallback />} />
 
       <Route element={<ProtectedRoute />}>

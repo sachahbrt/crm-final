@@ -20,7 +20,16 @@ app.use(helmet());
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
 app.use(passport.initialize());
-app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Trop de requêtes, réessaie dans quelques minutes." },
+  })
+);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/contacts", contactRoutes);

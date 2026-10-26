@@ -3,8 +3,8 @@ import crypto from "crypto";
 import { z } from "zod";
 import User from "../models/User.js";
 import Contact from "../models/Contact.js";
-import { sendResetEmail } from "../utils/mailer.js";
-import { signToken } from "../utils/token.js";
+import { sendResetEmail, sendPasswordChangedEmail, sendEmailChangeVerification } from "../utils/mailer.js";
+import { signToken, generateHashedToken } from "../utils/token.js";
 
 function toPublicUser(user) {
   return { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email };
@@ -61,6 +61,97 @@ export async function getMe(req, res, next) {
   }
 }
 
+const updateProfileSchema = z.object({ firstName: z.string().min(1), lastName: z.string().min(1) });
+
+export async function updateProfile(req, res, next) {
+  try {
+    const data = updateProfileSchema.parse(req.body);
+    const user = await User.findByIdAndUpdate(req.user.id, data, { returnDocument: "after", runValidators: true });
+    if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+    res.json({ user: toPublicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const changePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8) });
+
+export async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const user = await User.findById(req.user.id).select("+password");
+    if (!user || !user.password) return res.status(404).json({ message: "Utilisateur introuvable" });
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    // 400, not 401: the session/token is valid, only the submitted password
+    // field is wrong — a 401 here would make the frontend's global
+    // "session expired" handler log the user out (see resetPassword's 400
+    // for the same reason on an invalid/expired reset token).
+    if (!valid) return res.status(400).json({ message: "Mot de passe actuel incorrect" });
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ success: true });
+    // Notification only — the change already happened, a mail failure here
+    // must never undo it or surface as an error to the client.
+    try {
+      await sendPasswordChangedEmail(user.email);
+    } catch (mailErr) {
+      console.error("sendPasswordChangedEmail failed:", mailErr.response || mailErr.message);
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+const changeEmailSchema = z.object({ newEmail: z.string().email(), currentPassword: z.string().min(1) });
+
+export async function requestEmailChange(req, res, next) {
+  try {
+    const { newEmail, currentPassword } = changeEmailSchema.parse(req.body);
+    const email = newEmail.toLowerCase();
+    const user = await User.findById(req.user.id).select("+password");
+    if (!user || !user.password) return res.status(404).json({ message: "Utilisateur introuvable" });
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return res.status(400).json({ message: "Mot de passe actuel incorrect" });
+    const taken = await User.findOne({ email });
+    if (taken) return res.status(409).json({ message: "Cet email est déjà utilisé" });
+
+    const { raw, hashed, expires } = generateHashedToken();
+    user.pendingEmail = email;
+    user.pendingEmailToken = hashed;
+    user.pendingEmailExpires = expires;
+    await user.save();
+
+    const confirmUrl = `${process.env.FRONTEND_URL}/confirm-email/${raw}`;
+    try {
+      await sendEmailChangeVerification(email, confirmUrl);
+    } catch (mailErr) {
+      console.error("sendEmailChangeVerification failed:", mailErr.response || mailErr.message);
+    }
+    res.json({ message: "Vérifie ta nouvelle adresse pour confirmer le changement" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function confirmEmailChange(req, res, next) {
+  try {
+    const hashedToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
+    const user = await User.findOne({
+      pendingEmailToken: hashedToken,
+      pendingEmailExpires: { $gt: Date.now() },
+    }).select("+pendingEmailToken +pendingEmailExpires");
+    if (!user) return res.status(400).json({ message: "Lien invalide ou expiré" });
+    user.email = user.pendingEmail;
+    user.pendingEmail = undefined;
+    user.pendingEmailToken = undefined;
+    user.pendingEmailExpires = undefined;
+    await user.save();
+    res.json({ message: "Email mis à jour" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 const forgotSchema = z.object({ email: z.string().email() });
 
 export async function forgotPassword(req, res, next) {
@@ -68,11 +159,11 @@ export async function forgotPassword(req, res, next) {
     const { email } = forgotSchema.parse(req.body);
     const user = await User.findOne({ email: email.toLowerCase() });
     if (user) {
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      user.resetPasswordToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-      user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
+      const { raw, hashed, expires } = generateHashedToken();
+      user.resetPasswordToken = hashed;
+      user.resetPasswordExpires = expires;
       await user.save();
-      const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`;
+      const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${raw}`;
       try {
         await sendResetEmail(user.email, resetUrl);
       } catch (mailErr) {

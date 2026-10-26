@@ -36,6 +36,10 @@ export function AuthProvider({ children }) {
     setUser(data.user);
   }
 
+  function updateUser(partial) {
+    setUser((u) => ({ ...u, ...partial }));
+  }
+
   async function logout() {
     try {
       await apiFetch("/api/auth/logout", { method: "POST" });
@@ -47,7 +51,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithToken, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithToken, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

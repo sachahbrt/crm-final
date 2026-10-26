@@ -9,6 +9,9 @@ const userSchema = new mongoose.Schema(
     googleId: { type: String },
     resetPasswordToken: { type: String, select: false },
     resetPasswordExpires: { type: Date, select: false },
+    pendingEmail: { type: String },
+    pendingEmailToken: { type: String, select: false },
+    pendingEmailExpires: { type: Date, select: false },
   },
   { timestamps: true }
 );
