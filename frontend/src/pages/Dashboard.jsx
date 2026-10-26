@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { apiFetch } from "../api";
@@ -10,19 +10,56 @@ const STATUS_STYLE = {
   "à recontacter": "bg-warning/10 text-warning",
 };
 
-function Tile({ label, value }) {
+function Tile({ label, value, icon }) {
   return (
     <div className="rounded-xl border border-ink-300/60 bg-white p-5">
-      <div className="text-sm text-ink-500">{label}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-ink-500">{label}</div>
+        {icon && (
+          <div className="flex size-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+            {icon}
+          </div>
+        )}
+      </div>
       <div className="mt-1 text-3xl font-semibold text-ink-900">{value}</div>
     </div>
   );
 }
 
+const TILE_COUNT = 4;
+const SWIPE_THRESHOLD = 45; // px before a drag counts as a swipe, not a tap
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [recentContacts, setRecentContacts] = useState(null);
+  const [slide, setSlide] = useState(0);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  const dragStartX = useRef(null);
+
+  // Mobile carousel: one tile at a time, dragged/swiped with a translateX
+  // track, wrapping at both ends — the desktop grid (sm:) doesn't use any of
+  // this, so it only applies the transform while actually below that
+  // breakpoint (a plain CSS media query can't be conditioned on JS state).
+  useEffect(() => {
+    function onResize() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  function handleDragStart(e) {
+    dragStartX.current = e.clientX;
+  }
+
+  function handleDragEnd(e) {
+    if (dragStartX.current == null) return;
+    const delta = e.clientX - dragStartX.current;
+    dragStartX.current = null;
+    if (delta <= -SWIPE_THRESHOLD) setSlide((i) => (i + 1) % TILE_COUNT);
+    else if (delta >= SWIPE_THRESHOLD) setSlide((i) => (i - 1 + TILE_COUNT) % TILE_COUNT);
+  }
 
   useEffect(() => {
     apiFetch("/api/stats")
@@ -45,12 +82,65 @@ export default function Dashboard() {
       {!stats ? (
         <div className="text-sm text-ink-500">Chargement…</div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Tile label="Contacts au total" value={totalContacts} />
-          <Tile label="À recontacter" value={stats.toRecontact.count} />
-          <Tile label="Ajoutés ce mois-ci" value={addedThisMonth} />
-          <Tile label="Catégorie principale" value={topCategory ? topCategory.category : "—"} />
-        </div>
+        <>
+          <div className="overflow-hidden sm:overflow-visible">
+            <div
+              onPointerDown={handleDragStart}
+              onPointerUp={handleDragEnd}
+              style={isMobile ? { transform: `translateX(-${slide * 100}%)` } : undefined}
+              className="flex touch-pan-y transition-transform duration-300 ease-out sm:grid sm:grid-cols-2 sm:gap-4 sm:transition-none lg:grid-cols-4"
+            >
+              <div className="w-full shrink-0 sm:w-auto sm:shrink">
+                <Tile
+                  label="Contacts au total"
+                  value={totalContacts}
+                  icon={
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+                      <circle cx="9" cy="8" r="3.2" />
+                      <path d="M3.5 20c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5" strokeLinecap="round" />
+                      <circle cx="17" cy="9" r="2.4" />
+                      <path d="M15.5 20c0-2.3 1.6-4.2 3.6-4.8" strokeLinecap="round" />
+                    </svg>
+                  }
+                />
+              </div>
+              <div className="w-full shrink-0 sm:w-auto sm:shrink">
+                <Tile
+                  label="À recontacter"
+                  value={stats.toRecontact.count}
+                  icon={
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+                      <circle cx="12" cy="12" r="8" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  }
+                />
+              </div>
+              <div className="w-full shrink-0 sm:w-auto sm:shrink">
+                <Tile
+                  label="Ajoutés ce mois-ci"
+                  value={addedThisMonth}
+                  icon={
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+                      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                    </svg>
+                  }
+                />
+              </div>
+              <div className="w-full shrink-0 sm:w-auto sm:shrink">
+                <Tile
+                  label="Catégorie principale"
+                  value={topCategory ? topCategory.category : "—"}
+                  icon={
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4">
+                      <path d="M4 20V10M12 20V4M20 20v-6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       <div className="rounded-xl border border-ink-300/60 bg-white p-5">
