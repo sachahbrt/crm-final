@@ -10,47 +10,51 @@ function getTransporter() {
 
 // Inline-styled on purpose: email clients strip <style> blocks and external
 // CSS, so every rule has to live on the element itself to render reliably.
-function resetEmailHtml(resetUrl) {
+// Shared by every transactional email (reset, password-changed notice, email
+// change confirmation) — only title/text/button differ. Colors match the
+// site's current "LockList" palette (frontend/src/index.css custom
+// properties) — keep these in sync if that palette changes.
+function emailTemplate({ title, text, buttonLabel, buttonUrl }) {
   return `
 <meta charset="utf-8">
-<body style="margin:0;padding:32px 16px;background:#F3F4F6;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E5E7EB;">
+<body style="margin:0;padding:32px 16px;background:#F7F5F0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E2DED2;">
     <tr>
       <td style="padding:32px 32px 24px;text-align:center;">
-        <span style="display:inline-block;width:36px;height:36px;line-height:36px;background:#4F46E5;color:#ffffff;font-weight:700;font-size:16px;border-radius:8px;">B</span>
-        <div style="margin-top:8px;font-weight:700;font-size:15px;color:#111827;">CRM Breece</div>
+        <span style="display:inline-block;width:36px;height:36px;line-height:36px;background:#C08A2E;color:#ffffff;font-size:16px;border-radius:8px;">&#128274;</span>
+        <div style="margin-top:8px;font-weight:700;font-size:15px;color:#15202E;">LockList</div>
       </td>
     </tr>
     <tr>
       <td style="padding:0 32px 8px;">
-        <h1 style="margin:0;font-size:20px;color:#111827;">Réinitialisation du mot de passe</h1>
+        <h1 style="margin:0;font-size:20px;color:#15202E;">${title}</h1>
       </td>
     </tr>
     <tr>
       <td style="padding:0 32px 24px;">
-        <p style="margin:0;font-size:14px;line-height:1.6;color:#4B5563;">
-          Une demande de réinitialisation de mot de passe a été faite pour ce compte. Clique sur le bouton ci-dessous pour en choisir un nouveau. Ce lien est valable 1 heure.
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#3A4150;">
+          ${text}
         </p>
       </td>
     </tr>
     <tr>
       <td style="padding:0 32px 28px;text-align:center;">
-        <a href="${resetUrl}" style="display:inline-block;background:#4F46E5;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:8px;">
-          Réinitialiser mon mot de passe
+        <a href="${buttonUrl}" style="display:inline-block;background:#C08A2E;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:8px;">
+          ${buttonLabel}
         </a>
       </td>
     </tr>
     <tr>
       <td style="padding:0 32px 28px;">
-        <p style="margin:0;font-size:12px;line-height:1.6;color:#9CA3AF;">
+        <p style="margin:0;font-size:12px;line-height:1.6;color:#5B5F6B;">
           Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :<br>
-          <a href="${resetUrl}" style="color:#4F46E5;word-break:break-all;">${resetUrl}</a>
+          <a href="${buttonUrl}" style="color:#C08A2E;word-break:break-all;">${buttonUrl}</a>
         </p>
       </td>
     </tr>
     <tr>
-      <td style="padding:16px 32px;border-top:1px solid #E5E7EB;text-align:center;">
-        <p style="margin:0;font-size:12px;color:#9CA3AF;">
+      <td style="padding:16px 32px;border-top:1px solid #E2DED2;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#5B5F6B;">
           Si tu n'es pas à l'origine de cette demande, tu peux ignorer cet email.
         </p>
       </td>
@@ -67,6 +71,40 @@ export async function sendResetEmail(to, resetUrl) {
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to,
     subject: "Réinitialisation de votre mot de passe",
-    html: resetEmailHtml(resetUrl),
+    html: emailTemplate({
+      title: "Réinitialisation du mot de passe",
+      text: "Une demande de réinitialisation de mot de passe a été faite pour ce compte. Clique sur le bouton ci-dessous pour en choisir un nouveau. Ce lien est valable 1 heure.",
+      buttonLabel: "Réinitialiser mon mot de passe",
+      buttonUrl: resetUrl,
+    }),
+  });
+}
+
+export async function sendPasswordChangedEmail(to) {
+  const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/login`;
+  await getTransporter().sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to,
+    subject: "Ton mot de passe a été modifié",
+    html: emailTemplate({
+      title: "Mot de passe modifié",
+      text: "Le mot de passe de ton compte LockList vient d'être modifié. Si ce n'est pas toi, contacte-nous immédiatement.",
+      buttonLabel: "Accéder à mon compte",
+      buttonUrl: loginUrl,
+    }),
+  });
+}
+
+export async function sendEmailChangeVerification(to, confirmUrl) {
+  await getTransporter().sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to,
+    subject: "Confirme ta nouvelle adresse email",
+    html: emailTemplate({
+      title: "Confirme ta nouvelle adresse email",
+      text: "Clique sur le bouton ci-dessous pour confirmer que cette adresse t'appartient et finaliser le changement. Ce lien est valable 1 heure.",
+      buttonLabel: "Confirmer mon email",
+      buttonUrl: confirmUrl,
+    }),
   });
 }
