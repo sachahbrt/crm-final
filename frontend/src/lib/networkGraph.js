@@ -1,13 +1,16 @@
-export const PERSON_COLOR = "#465FFF";
-export const COMPANY_COLOR = "#F79009";
-export const ME_COLOR = "#12B76A";
+export const PERSON_COLOR = "#15202E";
+export const COMPANY_COLOR = "#C08A2E";
+export const ME_COLOR = "#1C7C4D";
 
 // Builds { nodes, links } for react-force-graph-2d from a contacts array and
 // the logged-in user. Node shape: { id, label, type: "me"|"person"|"company", val }.
 // Link shape: { source, target } (node ids). When currentUser is set, "me" links
 // to each distinct company (once) rather than to every person directly; a contact
 // with no company links straight to "me" instead, so nobody is left unreachable.
-export function buildNetworkGraph(contacts, currentUser) {
+// `companyDomains` (optional Map company name -> real domain, from
+// resolveCompanyDomains below) lets a caller resolve logos accurately before
+// the graph is even built, instead of guessing a domain from the name.
+export function buildNetworkGraph(contacts, currentUser, companyDomains) {
   const nodes = [];
   const links = [];
   const companyIds = new Map();
@@ -30,13 +33,89 @@ export function buildNetworkGraph(contacts, currentUser) {
     if (!companyId) {
       companyId = `company-${company}`;
       companyIds.set(company, companyId);
-      nodes.push({ id: companyId, label: company, type: "company", val: 7 });
+      nodes.push({
+        id: companyId,
+        label: company,
+        type: "company",
+        val: 7,
+        logoUrl: brandfetchLogoUrl(company, companyDomains?.get(company)),
+      });
       if (currentUser) links.push({ source: "me", target: companyId });
     }
     links.push({ source: personId, target: companyId });
   }
 
   return { nodes, links };
+}
+
+// Builds a Brandfetch Logo Link URL (https://docs.brandfetch.com/logo-api/overview)
+// for a company. Prefers `resolvedDomain` (a real domain from
+// resolveCompanyDomains, via the Brand Search API) when given — falls back to
+// a best-effort ".com" guess from the name otherwise, which is wrong for
+// plenty of real companies (e.g. "Thales" guesses thales.com, a different,
+// unrelated company — thalesgroup.com is the real one) but still better than
+// nothing when Brand Search isn't configured or found no match.
+export function brandfetchLogoUrl(company, resolvedDomain) {
+  const clientId = import.meta.env.VITE_BRANDFETCH_CLIENT_ID;
+  if (!clientId) return null;
+  const domain =
+    resolvedDomain ||
+    company
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") + ".com";
+  // fallback/404: Brandfetch otherwise serves a generic placeholder icon for
+  // an unrecognized brand instead of erroring, which would make drawNode's
+  // "image loaded fine" check pass and draw that placeholder as if it were
+  // the real logo.
+  return domain ? `https://cdn.brandfetch.io/${domain}/fallback/404/type/icon?c=${clientId}` : null;
+}
+
+// Module-level so a name is only ever searched once, shared across renders
+// and (if another caller wants it later) other graph instances.
+const domainCache = new Map();
+
+// Resolves real domains for a list of company names via Brandfetch's Brand
+// Search API (https://docs.brandfetch.com/reference/brand-search-api), so
+// logos can use the actual matched brand instead of a guessed ".com". Returns
+// a Map company name -> domain (or null if unresolved/not found) for EVERY
+// name passed in. Never throws: a missing client ID, no match, or a failed
+// request all just resolve that name to null, and the caller's existing
+// guess-based fallback in brandfetchLogoUrl takes over.
+export async function resolveCompanyDomains(companyNames) {
+  const clientId = import.meta.env.VITE_BRANDFETCH_SEARCH_CLIENT_ID;
+  const result = new Map();
+  const toFetch = [];
+  for (const name of new Set(companyNames.filter(Boolean))) {
+    if (domainCache.has(name)) result.set(name, domainCache.get(name));
+    else toFetch.push(name);
+  }
+  if (!clientId || toFetch.length === 0) {
+    for (const name of toFetch) {
+      domainCache.set(name, null);
+      result.set(name, null);
+    }
+    return result;
+  }
+
+  await Promise.all(
+    toFetch.map(async (name) => {
+      let domain = null;
+      try {
+        const res = await fetch(`https://api.brandfetch.io/v2/search/${encodeURIComponent(name)}?c=${clientId}`);
+        if (res.ok) {
+          const matches = await res.json();
+          domain = matches[0]?.domain || null;
+        }
+      } catch {
+        domain = null;
+      }
+      domainCache.set(name, domain);
+      result.set(name, domain);
+    })
+  );
+  return result;
 }
 
 // Deterministic radial layout: fixes fx/fy on every node instead of letting
@@ -112,7 +191,12 @@ export function getNodeRadius(node, opts = {}) {
 export function drawNode(node, ctx, scale, opts = {}) {
   const r = getNodeRadius(node, opts);
   const color = node.type === "company" ? COMPANY_COLOR : node.type === "me" ? ME_COLOR : PERSON_COLOR;
-  const imageUrl = node.type === "person" && node.photoUrl ? node.photoUrl : null;
+  const imageUrl =
+    node.type === "person" && node.photoUrl
+      ? node.photoUrl
+      : node.type === "company" && opts.showCompanyLogo && node.logoUrl
+        ? node.logoUrl
+        : null;
   const img = imageUrl ? getCachedImage(imageUrl) : null;
 
   if (img && img.complete && img.naturalWidth > 0) {

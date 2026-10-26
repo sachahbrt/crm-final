@@ -3,11 +3,21 @@ import ForceGraph2D from "react-force-graph-2d";
 import toast from "react-hot-toast";
 import { apiFetch } from "../api";
 import { useAuth } from "../context/useAuth";
-import { buildNetworkGraph, applyRadialLayout, drawNode, frameGraph, PERSON_COLOR, COMPANY_COLOR, ME_COLOR } from "../lib/networkGraph";
+import {
+  buildNetworkGraph,
+  applyRadialLayout,
+  drawNode,
+  frameGraph,
+  resolveCompanyDomains,
+  PERSON_COLOR,
+  COMPANY_COLOR,
+  ME_COLOR,
+} from "../lib/networkGraph";
 
 export default function Network() {
   const { user } = useAuth();
   const [contacts, setContacts] = useState(null);
+  const [companyDomains, setCompanyDomains] = useState(new Map());
   const fgRef = useRef();
   const containerRef = useRef();
   const [width, setWidth] = useState(0);
@@ -27,14 +37,22 @@ export default function Network() {
 
   useEffect(() => {
     apiFetch("/api/contacts?limit=1000")
-      .then((data) => setContacts(data.contacts))
+      .then(async (data) => {
+        // Resolve real domains (Brand Search API) before the graph is built
+        // (and before the "Chargement…" gate below clears) — otherwise a
+        // guessed ".com", or worse the wrong company's logo, would flash
+        // briefly before being replaced once the search resolves.
+        const names = data.contacts.map((c) => c.company?.trim()).filter(Boolean);
+        setCompanyDomains(await resolveCompanyDomains(names));
+        setContacts(data.contacts);
+      })
       .catch((err) => toast.error(err.message));
   }, []);
 
   const graph = useMemo(() => {
-    const g = buildNetworkGraph(contacts || [], user);
+    const g = buildNetworkGraph(contacts || [], user, companyDomains);
     return applyRadialLayout(g, "me", { ringDist: 220, leafDist: 410 });
-  }, [contacts, user]);
+  }, [contacts, user, companyDomains]);
 
   useEffect(() => {
     // Default view isn't reliably centered on our fixed-position nodes — frame
@@ -84,8 +102,12 @@ export default function Network() {
             nodeVal="val"
             linkColor={() => "#E4E7EC"}
             nodeCanvasObjectMode={() => "replace"}
-            nodeCanvasObject={(node, ctx, scale) => drawNode(node, ctx, scale, { companyRadius: 15 })}
-            cooldownTicks={0}
+            nodeCanvasObject={(node, ctx, scale) => drawNode(node, ctx, scale, { companyRadius: 15, showCompanyLogo: true })}
+            // Not 0: positions are fixed so physics does nothing either way,
+            // but the render loop keeps repainting for these ~60 frames —
+            // long enough for async company logo loads (Brandfetch) to land
+            // without needing a user interaction (zoom/pan) to redraw.
+            cooldownTicks={60}
           />
         ) : null}
       </div>
