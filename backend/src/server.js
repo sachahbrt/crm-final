@@ -12,6 +12,7 @@ import statsRoutes from "./routes/statsRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const PORT = process.env.PORT || 4000;
+// Already normalized (trailing slash stripped) in env.js.
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const app = express();
