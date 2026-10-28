@@ -239,9 +239,12 @@ export default function ContactModal({ contact, onClose, onSaved }) {
                   <button
                     type="button"
                     onClick={() => removeSocialNetwork(i)}
-                    className="shrink-0 rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+                    aria-label="Retirer ce réseau"
+                    className="flex shrink-0 items-center justify-center rounded-lg border border-ink-300 p-2 text-ink-500 hover:bg-ink-100 hover:text-ink-900"
                   >
-                    Retirer
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16ZM10 11v6M14 11v6" />
+                    </svg>
                   </button>
                 </div>
               ))}
