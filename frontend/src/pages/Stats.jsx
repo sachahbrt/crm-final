@@ -211,6 +211,7 @@ export default function Stats() {
               <Tooltip
                 contentStyle={{ borderRadius: 8, borderColor: "var(--color-ink-300)", fontSize: 12 }}
                 labelStyle={{ color: "var(--color-ink-900)", fontWeight: 600 }}
+                formatter={(value) => [value, undefined]}
               />
               <Line
                 type="monotone"
