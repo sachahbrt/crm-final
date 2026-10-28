@@ -86,31 +86,9 @@ export default function Layout() {
 
         <div className="flex-1" />
 
-        <div className="mb-2 flex flex-col gap-1 px-3">
-          {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
-                  isActive ? "text-white" : "text-white/55 hover:text-white"
-                }`
-              }
-            >
-              <Icon className="size-4 shrink-0" />
-              {label}
-            </NavLink>
-          ))}
-          <div className="flex cursor-default items-center gap-3 px-3 py-2 text-[13px] font-medium text-white/30">
-            <HelpIcon className="size-4 shrink-0" />
-            Centre d'aide
-          </div>
-        </div>
-
         <div className="mx-3 mb-3 h-px bg-white/10" />
 
-        <ProfileMenu user={user} logout={logout} />
+        <ProfileMenu user={user} logout={logout} onNavigate={() => setSidebarOpen(false)} />
       </aside>
 
       <div className="flex-1 lg:min-w-0">
@@ -145,7 +123,7 @@ export default function Layout() {
   );
 }
 
-function ProfileMenu({ user, logout }) {
+function ProfileMenu({ user, logout, onNavigate }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -161,11 +139,26 @@ function ProfileMenu({ user, logout }) {
     <div ref={ref} className="relative border-t border-white/10 p-3">
       {open && (
         <div className="absolute inset-x-3 bottom-full mb-1 overflow-hidden rounded-xl border border-ink-300/60 bg-white shadow-lg">
+          {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              onClick={() => {
+                setOpen(false);
+                onNavigate?.();
+              }}
+              className="flex items-center gap-2.5 px-3 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-ink-100"
+            >
+              <Icon className="size-4 shrink-0" />
+              {label}
+            </Link>
+          ))}
           <button
             type="button"
             onClick={logout}
-            className="block w-full px-3 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-ink-100"
+            className="flex w-full items-center gap-2.5 border-t border-ink-100 px-3 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-ink-100"
           >
+            <LogoutIcon className="size-4 shrink-0" />
             Déconnexion
           </button>
         </div>
@@ -231,6 +224,15 @@ function HomeIcon(props) {
   );
 }
 
+function LogoutIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <path d="M13 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12h11m0 0-3.5-3.5M21 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function UsersIcon(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
@@ -257,12 +259,3 @@ function GearIcon(props) {
   );
 }
 
-function HelpIcon(props) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.5 9.2a2.5 2.5 0 0 1 4.9.8c0 1.6-2.4 2-2.4 3.5" strokeLinecap="round" />
-      <path d="M12 17v.01" strokeLinecap="round" />
-    </svg>
-  );
-}
