@@ -3,28 +3,55 @@ import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import AuthCard from "../components/AuthCard";
 import { useAuth } from "../context/useAuth";
-import { API_BASE } from "../api";
+import { API_BASE, apiFetch } from "../api";
 
 const inputClass =
   "w-full rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginWithToken } = useAuth();
   const navigate = useNavigate();
+  const [step, setStep] = useState("credentials"); // "credentials" | "code"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [preAuthToken, setPreAuthToken] = useState(null);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await login(email, password);
-      navigate("/dashboard");
+      const data = await login(email, password);
+      if (data?.twoFactorRequired) {
+        setPreAuthToken(data.preAuthToken);
+        setStep("code");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       toast.error(err.message);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCodeSubmit(e) {
+    e.preventDefault();
+    setVerifying(true);
+    try {
+      const data = await apiFetch("/api/auth/login/verify-2fa", {
+        method: "POST",
+        body: { code },
+        token: preAuthToken,
+      });
+      await loginWithToken(data.token);
+      navigate("/dashboard");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -36,6 +63,33 @@ export default function Login() {
       e.preventDefault();
       handleSubmit(e);
     }
+  }
+
+  if (step === "code") {
+    return (
+      <AuthCard title="Vérification" subtitle="Entre le code reçu par email pour terminer la connexion">
+        <form onSubmit={handleCodeSubmit} className="flex flex-col gap-4">
+          <input
+            autoFocus
+            required
+            inputMode="numeric"
+            pattern="\d{6}"
+            maxLength={6}
+            placeholder="000000"
+            className="w-full rounded-lg border border-ink-300 px-3 py-2 text-center text-lg font-bold tracking-[0.4em] text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          />
+          <button
+            type="submit"
+            disabled={verifying || code.length !== 6}
+            className="mt-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+          >
+            {verifying ? "Vérification…" : "Confirmer"}
+          </button>
+        </form>
+      </AuthCard>
+    );
   }
 
   return (

@@ -7,6 +7,13 @@ export function signToken(userId) {
   });
 }
 
+// Short-lived token handed back while a 2FA code is pending — NOT a real
+// session token. The `purpose` claim lets requireAuth tell the two apart so
+// this can't be used to reach protected routes before the code is verified.
+export function signPreAuthToken(userId) {
+  return jwt.sign({ id: userId, purpose: "2fa" }, process.env.JWT_SECRET, { expiresIn: "10m" });
+}
+
 // Shared by any "emailed link proves ownership" flow (password reset, email
 // change confirmation): a random raw token sent by email, only its sha256
 // hash stored in DB so a DB leak alone can't be used to forge valid links.

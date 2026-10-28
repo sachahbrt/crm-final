@@ -1,13 +1,26 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { z } from "zod";
 import User from "../models/User.js";
 import Contact from "../models/Contact.js";
-import { sendResetEmail, sendPasswordChangedEmail, sendEmailChangeVerification, sendDeleteAccountCode } from "../utils/mailer.js";
-import { signToken, generateHashedToken, generateHashedCode } from "../utils/token.js";
+import {
+  sendResetEmail,
+  sendPasswordChangedEmail,
+  sendEmailChangeVerification,
+  sendDeleteAccountCode,
+  sendTwoFactorCode,
+} from "../utils/mailer.js";
+import { signToken, signPreAuthToken, generateHashedToken, generateHashedCode } from "../utils/token.js";
 
 function toPublicUser(user) {
-  return { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email };
+  return {
+    id: user._id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    twoFactorEnabled: user.twoFactorEnabled,
+  };
 }
 
 const registerSchema = z.object({
@@ -41,7 +54,77 @@ export async function connectUser(req, res, next) {
     if (!user || !user.password) return res.status(401).json({ message: "Identifiants invalides" });
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: "Identifiants invalides" });
+
+    if (user.twoFactorEnabled) {
+      const { code, hashed, expires } = generateHashedCode();
+      user.twoFactorCode = hashed;
+      user.twoFactorCodeExpires = expires;
+      await user.save();
+      try {
+        await sendTwoFactorCode(user.email, code);
+      } catch (mailErr) {
+        // Same reasoning as requestAccountDeletion: there's no real session
+        // yet, so a mail failure must surface — the code is the only way in.
+        console.error("sendTwoFactorCode failed:", mailErr.response || mailErr.message);
+        return res.status(502).json({ message: "Impossible d'envoyer le code de connexion" });
+      }
+      return res.json({ twoFactorRequired: true, preAuthToken: signPreAuthToken(user._id) });
+    }
+
     res.json({ user: toPublicUser(user), token: signToken(user._id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const verifyTwoFactorSchema = z.object({ code: z.string().length(6) });
+
+export async function verifyTwoFactor(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ message: "Authentification requise" });
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: "Token invalide ou expiré" });
+    }
+    // requireAuth rejects purpose:"2fa" tokens by design, so this route
+    // checks the pre-auth token itself instead of using that middleware.
+    if (payload.purpose !== "2fa") return res.status(401).json({ message: "Token invalide" });
+
+    const { code } = verifyTwoFactorSchema.parse(req.body);
+    const hashedCode = crypto.createHash("sha256").update(code).digest("hex");
+    const user = await User.findOne({
+      _id: payload.id,
+      twoFactorCode: hashedCode,
+      twoFactorCodeExpires: { $gt: Date.now() },
+    }).select("+twoFactorCode +twoFactorCodeExpires");
+    if (!user) return res.status(400).json({ message: "Code invalide ou expiré" });
+    user.twoFactorCode = undefined;
+    user.twoFactorCodeExpires = undefined;
+    await user.save();
+    res.json({ user: toPublicUser(user), token: signToken(user._id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const updateTwoFactorSchema = z.object({ enabled: z.boolean(), currentPassword: z.string().min(1) });
+
+export async function updateTwoFactor(req, res, next) {
+  try {
+    const { enabled, currentPassword } = updateTwoFactorSchema.parse(req.body);
+    const user = await User.findById(req.user.id).select("+password");
+    if (!user || !user.password) return res.status(404).json({ message: "Utilisateur introuvable" });
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    // 400, not 401 — same reasoning as changePassword: the session is valid,
+    // only the submitted password field is wrong.
+    if (!valid) return res.status(400).json({ message: "Mot de passe actuel incorrect" });
+    user.twoFactorEnabled = enabled;
+    await user.save();
+    res.json({ user: toPublicUser(user) });
   } catch (err) {
     next(err);
   }

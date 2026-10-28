@@ -4,8 +4,11 @@ export function getToken() {
   return localStorage.getItem("token");
 }
 
-export async function apiFetch(path, { method = "GET", body, raw = false } = {}) {
-  const token = getToken();
+export async function apiFetch(path, { method = "GET", body, raw = false, token: tokenOverride } = {}) {
+  // `token` lets a caller authenticate with a token that isn't the stored
+  // session one yet — e.g. the short-lived 2FA pre-auth token, before login
+  // has actually completed.
+  const token = tokenOverride !== undefined ? tokenOverride : getToken();
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {

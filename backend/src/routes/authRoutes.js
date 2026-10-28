@@ -14,6 +14,8 @@ import {
   changePassword,
   requestEmailChange,
   confirmEmailChange,
+  verifyTwoFactor,
+  updateTwoFactor,
 } from "../controllers/authControllers.js";
 import { googleLogin, googleAuthCallback, googleCallback } from "../controllers/googleControllers.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -42,6 +44,7 @@ const googleAuthLimiter = rateLimit({
 
 router.post("/register", authLimiter, createUser);
 router.post("/login", authLimiter, connectUser);
+router.post("/login/verify-2fa", authLimiter, verifyTwoFactor);
 router.post("/logout", disconnectUser);
 router.get("/google", googleAuthLimiter, googleLogin);
 router.get("/google/callback", googleAuthLimiter, googleAuthCallback, googleCallback);
@@ -50,6 +53,7 @@ router.post("/reset-password/:token", resetPassword);
 router.get("/me", requireAuth, getMe);
 router.put("/me", requireAuth, updateProfile);
 router.put("/me/password", requireAuth, changePassword);
+router.put("/me/2fa", requireAuth, updateTwoFactor);
 router.post("/me/email", requireAuth, requestEmailChange);
 router.post("/confirm-email/:token", confirmEmailChange);
 router.get("/me/export", requireAuth, exportMyData);

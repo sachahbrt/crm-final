@@ -9,6 +9,7 @@ import "./config/passport.js";
 import authRoutes from "./routes/authRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const PORT = process.env.PORT || 4000;
@@ -35,6 +36,7 @@ app.use(
 app.use("/api/auth", authRoutes);
 app.use("/api/contacts", contactRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.use(errorHandler);
 

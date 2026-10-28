@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { apiFetch } from "../api";
 import ContactModal from "./ContactModal";
 import MiniNetworkGraph from "../components/MiniNetworkGraph";
 import Select from "../components/Select";
+import DatePicker from "../components/DatePicker";
 import { brandfetchLogoUrl, resolveCompanyDomains } from "../lib/networkGraph";
 
 // Small circular company logo (Brandfetch), used wherever a company name is
@@ -133,7 +134,7 @@ export default function Contacts() {
           setContacts(data.contacts);
           setTotal(data.total);
           setSelected((prev) =>
-            prev && data.contacts.some((c) => c._id === prev._id) ? prev : data.contacts[0] || null
+            prev && data.contacts.some((c) => c._id === prev._id) ? prev : null
           );
         })
         .catch((err) => toast.error(err.message))
@@ -386,6 +387,8 @@ function ContactPreviewCard({ contact, allContacts, onEdit, onDelete, onUpdated 
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState(contact?.notes || "");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [seenMenuOpen, setSeenMenuOpen] = useState(false);
+  const [seenCustomDate, setSeenCustomDate] = useState(""); // ISO date picked in the popover, not yet submitted
   // Reset the draft when a different contact is selected (not when the same
   // contact's notes change, e.g. right after saving) — the render-time state
   // adjustment pattern, since an effect here would cause an extra render.
@@ -394,6 +397,8 @@ function ContactPreviewCard({ contact, allContacts, onEdit, onDelete, onUpdated 
     setShownContactId(contact?._id);
     setEditingNotes(false);
     setNotesDraft(contact?.notes || "");
+    setSeenMenuOpen(false);
+    setSeenCustomDate("");
   }
 
   async function saveNotes() {
@@ -407,6 +412,42 @@ function ContactPreviewCard({ contact, allContacts, onEdit, onDelete, onUpdated 
       toast.error(err.message);
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  const [savingSeen, setSavingSeen] = useState(false);
+  const seenMenuRef = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (seenMenuRef.current && !seenMenuRef.current.contains(e.target)) setSeenMenuOpen(false);
+    }
+    function onEscape(e) {
+      if (e.key === "Escape") setSeenMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, []);
+
+  async function submitSeen(isoDate) {
+    setSavingSeen(true);
+    try {
+      // Seeing them again resolves a pending "à recontacter" — back to actif.
+      const body = { lastSeenAt: isoDate };
+      if (contact.status === "à recontacter") body.status = "actif";
+      const { contact: updated } = await apiFetch(`/api/contacts/${contact._id}`, { method: "PUT", body });
+      onUpdated(updated);
+      setSeenMenuOpen(false);
+      setSeenCustomDate("");
+      toast.success("Contact marqué comme revu");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingSeen(false);
     }
   }
 
@@ -511,6 +552,22 @@ function ContactPreviewCard({ contact, allContacts, onEdit, onDelete, onUpdated 
             <span>{meeting}</span>
           </div>
         )}
+        {contact.birthday && (
+          <div className="flex items-center gap-2.5 text-ink-900">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4 shrink-0 text-ink-500">
+              <path d="M4 21v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7M4 21h16M2 21h20M7 12V9a2 2 0 1 1 4 0v3M13 12V9a2 2 0 1 1 4 0v3M12 9V5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>Né(e) le {new Date(contact.birthday).toLocaleDateString("fr-FR")}</span>
+          </div>
+        )}
+        {contact.lastSeenAt && (
+          <div className="flex items-center gap-2.5 text-ink-900">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4 shrink-0 text-ink-500">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>Revu le {new Date(contact.lastSeenAt).toLocaleDateString("fr-FR")}</span>
+          </div>
+        )}
         {socials.map((sn, i) => (
           <div key={i} className="flex items-center gap-2.5 text-ink-900">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4 shrink-0 text-ink-500">
@@ -589,6 +646,46 @@ function ContactPreviewCard({ contact, allContacts, onEdit, onDelete, onUpdated 
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-ink-100 pt-4 text-sm">
+        <div ref={seenMenuRef} className="relative mr-auto">
+          <button
+            type="button"
+            onClick={() => setSeenMenuOpen((o) => !o)}
+            disabled={savingSeen}
+            className="font-medium text-brand-600 hover:underline disabled:opacity-60"
+          >
+            {savingSeen ? "Enregistrement…" : "Je viens de la revoir"}
+          </button>
+          {seenMenuOpen && (
+            <div className="absolute bottom-full left-0 z-20 mb-1 w-72 rounded-lg border border-ink-300 bg-white p-2 shadow-lg">
+              <button
+                type="button"
+                onClick={() => submitSeen(new Date().toISOString())}
+                disabled={savingSeen}
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-900 hover:bg-ink-100 disabled:opacity-60"
+              >
+                Aujourd'hui
+              </button>
+              <div className="mt-1 border-t border-ink-100 pt-2">
+                <span className="block px-3 pb-1 text-xs font-bold text-ink-500">Date personnalisée</span>
+                <div className="px-3 pb-2">
+                  <DatePicker value={seenCustomDate} onChange={setSeenCustomDate} className="w-full" />
+                </div>
+                {seenCustomDate && (
+                  <div className="flex justify-end px-3 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => submitSeen(new Date(seenCustomDate).toISOString())}
+                      disabled={savingSeen}
+                      className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+                    >
+                      Confirmer
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <button type="button" onClick={() => onEdit(contact)} className="font-medium text-ink-700 hover:underline">
           Modifier
         </button>

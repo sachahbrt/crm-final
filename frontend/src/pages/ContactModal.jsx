@@ -20,6 +20,7 @@ function emptyForm() {
     firstName: "",
     lastName: "",
     photoUrl: "",
+    birthday: "",
     meetingDate: "",
     meetingPlace: "",
     email: "",
@@ -38,6 +39,7 @@ function toForm(contact) {
   return {
     ...emptyForm(),
     ...contact,
+    birthday: contact.birthday ? contact.birthday.slice(0, 10) : "",
     meetingDate: contact.meetingDate ? contact.meetingDate.slice(0, 10) : "",
     socialNetworks: (contact.socialNetworks || []).map((sn) => ({
       platform: sn.platform || "",
@@ -100,6 +102,7 @@ export default function ContactModal({ contact, onClose, onSaved }) {
       firstName: form.firstName,
       lastName: form.lastName,
       photoUrl: form.photoUrl,
+      birthday: form.birthday || undefined,
       meetingDate: form.meetingDate || undefined,
       meetingPlace: form.meetingPlace,
       email: form.email,
@@ -161,11 +164,11 @@ export default function ContactModal({ contact, onClose, onSaved }) {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Prénom</label>
+              <label className={labelClass}>Prénom <span className="text-red-600">*</span></label>
               <input required className={inputClass} value={form.firstName} onChange={set("firstName")} />
             </div>
             <div>
-              <label className={labelClass}>Nom</label>
+              <label className={labelClass}>Nom <span className="text-red-600">*</span></label>
               <input required className={inputClass} value={form.lastName} onChange={set("lastName")} />
             </div>
             <div>
@@ -185,6 +188,10 @@ export default function ContactModal({ contact, onClose, onSaved }) {
               <input className={inputClass} value={form.jobTitle} onChange={set("jobTitle")} />
             </div>
             <div>
+              <label className={labelClass}>Date de naissance</label>
+              <DatePicker value={form.birthday} onChange={setValue("birthday")} />
+            </div>
+            <div>
               <label className={labelClass}>Date de rencontre</label>
               <DatePicker value={form.meetingDate} onChange={setValue("meetingDate")} />
             </div>
@@ -193,7 +200,7 @@ export default function ContactModal({ contact, onClose, onSaved }) {
               <input className={inputClass} value={form.meetingPlace} onChange={set("meetingPlace")} />
             </div>
             <div>
-              <label className={labelClass}>Catégorie</label>
+              <label className={labelClass}>Catégorie <span className="text-red-600">*</span></label>
               <input required list="categories" placeholder="Pro, Perso, Réseau…" className={inputClass} value={form.category} onChange={set("category")} />
               <datalist id="categories">
                 <option value="Pro" />

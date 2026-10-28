@@ -16,6 +16,9 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const data = await apiFetch("/api/auth/login", { method: "POST", body: { email, password } });
+    // 2FA on: no session yet, just a short-lived preAuthToken — let the
+    // caller (Login page) switch to the code step instead of logging in.
+    if (data.twoFactorRequired) return data;
     localStorage.setItem("token", data.token);
     setUser(data.user);
   }

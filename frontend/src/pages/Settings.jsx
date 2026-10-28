@@ -23,6 +23,9 @@ export default function Settings() {
   const [emailForm, setEmailForm] = useState({ newEmail: "", currentPassword: "" });
   const [savingEmail, setSavingEmail] = useState(false);
 
+  const [twoFactorPassword, setTwoFactorPassword] = useState("");
+  const [savingTwoFactor, setSavingTwoFactor] = useState(false);
+
   async function handleProfileSubmit(e) {
     e.preventDefault();
     setSavingProfile(true);
@@ -66,6 +69,24 @@ export default function Settings() {
       toast.error(err.message);
     } finally {
       setSavingEmail(false);
+    }
+  }
+
+  async function handleTwoFactorSubmit(e) {
+    e.preventDefault();
+    setSavingTwoFactor(true);
+    try {
+      const data = await apiFetch("/api/auth/me/2fa", {
+        method: "PUT",
+        body: { enabled: !user?.twoFactorEnabled, currentPassword: twoFactorPassword },
+      });
+      updateUser(data.user);
+      setTwoFactorPassword("");
+      toast.success(data.user.twoFactorEnabled ? "Double authentification activée" : "Double authentification désactivée");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingTwoFactor(false);
     }
   }
 
@@ -202,6 +223,36 @@ export default function Settings() {
               className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
             >
               {savingPwd ? "Modification…" : "Changer le mot de passe"}
+            </button>
+          </form>
+
+          <form onSubmit={handleTwoFactorSubmit} className="rounded-xl border border-ink-300/60 bg-white p-5">
+            <h2 className="text-sm font-semibold text-ink-700">Authentification à deux facteurs</h2>
+            <p className="mt-1 text-sm text-ink-500">
+              {user?.twoFactorEnabled
+                ? "Activée : un code te sera envoyé par email à chaque connexion."
+                : "Désactivée : la connexion par mot de passe se fait en une seule étape."}
+            </p>
+            <div className="mt-3">
+              <label className={labelClass}>Mot de passe actuel</label>
+              <input
+                type="password"
+                required
+                className={inputClass}
+                value={twoFactorPassword}
+                onChange={(e) => setTwoFactorPassword(e.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={savingTwoFactor}
+              className={`mt-4 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60 ${
+                user?.twoFactorEnabled
+                  ? "border border-red-200 text-red-600 hover:bg-red-50"
+                  : "bg-brand-500 text-white hover:bg-brand-600"
+              }`}
+            >
+              {savingTwoFactor ? "Enregistrement…" : user?.twoFactorEnabled ? "Désactiver" : "Activer"}
             </button>
           </form>
 

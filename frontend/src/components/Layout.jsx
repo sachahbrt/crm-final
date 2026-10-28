@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import toast from "react-hot-toast";
 import { useAuth } from "../context/useAuth";
+import { apiFetch } from "../api";
 
 const NAV = [
   { to: "/dashboard", label: "Tableau de bord", icon: HomeIcon },
@@ -119,7 +121,139 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <AiChatWidget />
     </div>
+  );
+}
+
+// Renders **bold** segments and line breaks from AI replies — the model
+// writes basic markdown but chat bubbles otherwise show plain text, so
+// "**word**" was showing up literally with the asterisks.
+function renderMessageContent(text) {
+  return text.split("\n").map((line, i) => (
+    <span key={i}>
+      {i > 0 && <br />}
+      {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
+        part.startsWith("**") && part.endsWith("**") ? <strong key={j}>{part.slice(2, -2)}</strong> : part
+      )}
+    </span>
+  ));
+}
+
+// Floating AI assistant button + chat panel, visible on every authenticated
+// page. The welcome/disclaimer bubble below is static (never sent to the
+// backend) and only shown while `messages` is still empty.
+function AiChatWidget() {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([]); // { role: "user" | "assistant", content }
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages, sending]);
+
+  async function handleSend(e) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || sending) return;
+    const history = messages.map(({ role, content }) => ({ role, content }));
+    setMessages((m) => [...m, { role: "user", content: text }]);
+    setInput("");
+    setSending(true);
+    try {
+      const { reply } = await apiFetch("/api/ai/chat", { method: "POST", body: { message: text, history } });
+      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+    } catch (err) {
+      toast.error(err.message);
+      setMessages((m) => [...m, { role: "assistant", content: "Je n'ai pas pu répondre, réessaie plus tard." }]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Native implicit submission-on-Enter can be swallowed in some browsers,
+  // so submit explicitly instead of relying on it (same convention as Login.jsx).
+  function handleEnterKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(e);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={open ? "Fermer l'assistant" : "Ouvrir l'assistant"}
+        className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-xl hover:bg-brand-600"
+      >
+        <SparkleIcon className="size-6" />
+      </button>
+
+      {open && (
+        <div className="fixed bottom-24 right-6 z-50 flex h-[32rem] w-96 flex-col overflow-hidden rounded-xl border border-ink-300/60 bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+            <h3 className="text-sm font-bold text-ink-900">Assistant LockList</h3>
+            <button type="button" onClick={() => setOpen(false)} className="text-ink-500 hover:text-ink-900">
+              ✕
+            </button>
+          </div>
+
+          <div ref={listRef} className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-3">
+            {messages.length === 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-brand-500/30 bg-brand-500/5 p-3 text-sm leading-relaxed text-ink-900">
+                <SparkleIcon className="mt-0.5 size-4 shrink-0 text-brand-500" />
+                <p>
+                  Bienvenue sur l'assistant LockList ! Je suis là pour t'aider avec tes contacts et ton réseau.
+                  Comme je m'appuie sur un modèle gratuit (propulsé par NVIDIA Nemotron 3 Ultra), les informations
+                  échangées ici — tes messages ainsi que les données de contact utilisées pour te répondre — peuvent
+                  être collectées par le fournisseur du modèle pour l'entraîner : évite donc de partager des
+                  informations trop sensibles. Pose-moi ta question quand tu veux !
+                </p>
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                    m.role === "user" ? "bg-brand-500 text-white" : "bg-ink-100 text-ink-900"
+                  }`}
+                >
+                  {renderMessageContent(m.content)}
+                </div>
+              </div>
+            ))}
+            {sending && (
+              <div className="flex justify-start">
+                <div className="rounded-lg bg-ink-100 px-3 py-2 text-sm text-ink-500">…</div>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-ink-100 p-3">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleEnterKey}
+              disabled={sending}
+              placeholder="Écris ton message…"
+              className="flex-1 rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={sending || !input.trim()}
+              className="flex h-[38px] shrink-0 items-center justify-center rounded-lg bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+            >
+              Envoyer
+            </button>
+          </form>
+        </div>
+      )}
+    </>
   );
 }
 

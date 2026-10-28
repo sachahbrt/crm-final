@@ -119,6 +119,19 @@ export async function sendDeleteAccountCode(to, code) {
   });
 }
 
+export async function sendTwoFactorCode(to, code) {
+  await getTransporter().sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to,
+    subject: "Code de connexion",
+    html: emailTemplate({
+      title: "Confirme ta connexion",
+      text: "Entre ce code dans l'application pour terminer la connexion à ton compte LockList. Ce code est valable 10 minutes.",
+      code,
+    }),
+  });
+}
+
 export async function sendEmailChangeVerification(to, confirmUrl) {
   await getTransporter().sendMail({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,

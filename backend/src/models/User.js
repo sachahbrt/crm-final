@@ -14,6 +14,9 @@ const userSchema = new mongoose.Schema(
     pendingEmailExpires: { type: Date, select: false },
     deleteAccountCode: { type: String, select: false },
     deleteAccountCodeExpires: { type: Date, select: false },
+    twoFactorEnabled: { type: Boolean, default: false },
+    twoFactorCode: { type: String, select: false },
+    twoFactorCodeExpires: { type: Date, select: false },
   },
   { timestamps: true }
 );
