@@ -359,7 +359,13 @@ export default function Contacts() {
           </div>
         </div>
 
-        <ContactPreviewCard contact={selected} allContacts={allContacts} onEdit={(c) => setEditing(c)} onDelete={handleDelete} />
+        <ContactPreviewCard
+          contact={selected}
+          allContacts={allContacts}
+          onEdit={(c) => setEditing(c)}
+          onDelete={handleDelete}
+          onUpdated={setSelected}
+        />
       </div>
 
       {editing !== null && (
@@ -376,7 +382,34 @@ export default function Contacts() {
   );
 }
 
-function ContactPreviewCard({ contact, allContacts, onEdit, onDelete }) {
+function ContactPreviewCard({ contact, allContacts, onEdit, onDelete, onUpdated }) {
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState(contact?.notes || "");
+  const [savingNotes, setSavingNotes] = useState(false);
+  // Reset the draft when a different contact is selected (not when the same
+  // contact's notes change, e.g. right after saving) — the render-time state
+  // adjustment pattern, since an effect here would cause an extra render.
+  const [shownContactId, setShownContactId] = useState(contact?._id);
+  if (contact?._id !== shownContactId) {
+    setShownContactId(contact?._id);
+    setEditingNotes(false);
+    setNotesDraft(contact?.notes || "");
+  }
+
+  async function saveNotes() {
+    setSavingNotes(true);
+    try {
+      const { contact: updated } = await apiFetch(`/api/contacts/${contact._id}`, { method: "PUT", body: { notes: notesDraft } });
+      onUpdated(updated);
+      setEditingNotes(false);
+      toast.success("Notes mises à jour");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
   if (!contact) {
     return (
       <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 rounded-2xl border border-ink-300/60 bg-white p-6 text-center text-sm text-ink-500">
@@ -491,14 +524,60 @@ function ContactPreviewCard({ contact, allContacts, onEdit, onDelete }) {
         ))}
       </div>
 
-      {contact.notes && (
-        <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-ink-500">Notes libres</span>
+          {!editingNotes && (
+            <button
+              type="button"
+              onClick={() => setEditingNotes(true)}
+              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5">
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Modifier
+            </button>
+          )}
+        </div>
+        {editingNotes ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              autoFocus
+              rows={4}
+              className="w-full resize-none rounded-xl border border-ink-300 bg-white p-3.5 text-sm leading-relaxed text-ink-900 outline-none focus:border-brand-500"
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingNotes(false);
+                  setNotesDraft(contact.notes || "");
+                }}
+                className="rounded-lg border border-ink-300 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={saveNotes}
+                disabled={savingNotes}
+                className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        ) : contact.notes ? (
           <div className="whitespace-pre-wrap rounded-xl border border-ink-300/60 bg-ink-100/60 p-3.5 text-sm leading-relaxed text-ink-900">
             {contact.notes}
           </div>
-        </div>
-      )}
+        ) : (
+          <span className="text-sm text-ink-500">Aucune note.</span>
+        )}
+      </div>
 
       <div className="flex flex-col gap-1.5 border-t border-ink-100 pt-4">
         <span className="text-xs font-bold text-ink-500">Réseau</span>
