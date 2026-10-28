@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiFetch } from "../api";
 import Select from "../components/Select";
 
@@ -38,6 +38,17 @@ function Tile({ label, value, sub }) {
   );
 }
 
+// Cycled through for the pie slices — distinct enough to tell apart, built
+// around the brand's gold/navy palette.
+const PIE_COLORS = [
+  "var(--color-brand-500)",
+  "var(--color-ink-900)",
+  "var(--color-warning)",
+  "var(--color-ink-500)",
+  "var(--color-brand-700)",
+  "var(--color-ink-300)",
+];
+
 function BreakdownRow({ row, total, isFirst }) {
   return (
     <div className={isFirst ? "" : "border-t border-ink-100 pt-3"}>
@@ -52,7 +63,7 @@ function BreakdownRow({ row, total, isFirst }) {
 
 // `maxRows`: when rows exceed it, show only the first `maxRows` and add a
 // small arrow button that opens a modal with the full, untruncated list.
-function BreakdownCard({ title, rows, total, highlight, maxRows }) {
+function BreakdownCard({ title, rows, total, highlight, maxRows, showChart }) {
   const [expanded, setExpanded] = useState(false);
   const isTruncated = maxRows && rows.length > maxRows;
   const visibleRows = isTruncated ? rows.slice(0, maxRows) : rows;
@@ -91,7 +102,7 @@ function BreakdownCard({ title, rows, total, highlight, maxRows }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setExpanded(false)}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[80vh] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+            className={`flex max-h-[80vh] w-full flex-col overflow-hidden rounded-xl bg-white p-5 shadow-xl ${showChart ? "max-w-2xl" : "max-w-sm"}`}
           >
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-sm font-bold text-ink-900">{title}</h3>
@@ -99,11 +110,45 @@ function BreakdownCard({ title, rows, total, highlight, maxRows }) {
                 ✕
               </button>
             </div>
-            <div className="flex flex-col gap-3">
-              {rows.map((row, i) => (
-                <BreakdownRow key={row.label} row={row} total={total} isFirst={i === 0} />
-              ))}
-            </div>
+            {showChart ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-6 sm:flex-row sm:items-center">
+                {/* min-h-0 lets this column actually shrink inside the flex
+                    row so overflow-y-auto can kick in, instead of growing to
+                    fit all rows and pushing past the modal's max height. */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="flex flex-col gap-3">
+                    {rows.map((row, i) => (
+                      <BreakdownRow key={row.label} row={row} total={total} isFirst={i === 0} />
+                    ))}
+                  </div>
+                </div>
+                {/* Stays put while the list scrolls — a sibling, not nested
+                    inside the scroll container. */}
+                <div className="h-64 w-full shrink-0 sm:h-72 sm:w-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={rows} dataKey="count" nameKey="label" innerRadius="55%" outerRadius="100%" paddingAngle={2}>
+                        {rows.map((row, i) => (
+                          <Cell key={row.label} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="white" strokeWidth={2} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, borderColor: "var(--color-ink-300)", fontSize: 12 }}
+                        formatter={(value, name) => [value, name]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="flex flex-col gap-3">
+                  {rows.map((row, i) => (
+                    <BreakdownRow key={row.label} row={row} total={total} isFirst={i === 0} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -174,6 +219,7 @@ export default function Stats() {
           total={totalContacts}
           rows={stats.byLocation.map((l) => ({ label: l.location, count: l.count }))}
           maxRows={3}
+          showChart
         />
         <BreakdownCard
           title="Contacts à recontacter"
