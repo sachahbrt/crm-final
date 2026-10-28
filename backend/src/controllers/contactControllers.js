@@ -1,8 +1,13 @@
+import mongoose from "mongoose";
 import { z } from "zod";
 import Contact from "../models/Contact.js";
 import { uploadImageBuffer } from "../utils/cloudinary.js";
 
 const STATUSES = ["actif", "inactif", "à recontacter"];
+const SORTABLE_FIELDS = ["name", "company", "category", "status"];
+// Status isn't sorted alphabetically — "à recontacter" first (most actionable),
+// then "inactif", then "actif". Reversed on sortDir=desc like the other columns.
+const STATUS_SORT_RANK = { "à recontacter": 0, inactif: 1, actif: 2 };
 
 const contactSchema = z.object({
   firstName: z.string().min(1),
@@ -24,8 +29,11 @@ const updateContactSchema = contactSchema.partial();
 
 export async function getAllContacts(req, res, next) {
   try {
-    const { search, category, status, page = 1, limit = 20 } = req.query;
-    const filter = { owner: req.user.id };
+    const { search, category, status, page = 1, limit = 20, sortBy, sortDir } = req.query;
+    // Cast up front: Mongoose auto-casts a string owner id for .find(), but
+    // .aggregate() (used below for status sort) talks to the driver more
+    // directly and won't — an uncast string here silently matches nothing.
+    const filter = { owner: new mongoose.Types.ObjectId(req.user.id) };
     if (category) filter.category = category;
     if (status) filter.status = status;
     if (search) {
@@ -34,13 +42,49 @@ export async function getAllContacts(req, res, next) {
     }
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.max(1, Number(limit) || 20);
-    const [contacts, total] = await Promise.all([
-      Contact.find(filter)
-        .sort({ createdAt: -1 })
-        .skip((pageNum - 1) * limitNum)
-        .limit(limitNum),
-      Contact.countDocuments(filter),
-    ]);
+    const dir = sortDir === "desc" ? -1 : 1;
+    const sortField = SORTABLE_FIELDS.includes(sortBy) ? sortBy : null;
+
+    let contacts, total;
+    if (sortField === "status") {
+      [contacts, total] = await Promise.all([
+        Contact.aggregate([
+          { $match: filter },
+          {
+            $addFields: {
+              _statusRank: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ["$status", "à recontacter"] }, then: STATUS_SORT_RANK["à recontacter"] },
+                    { case: { $eq: ["$status", "inactif"] }, then: STATUS_SORT_RANK.inactif },
+                    { case: { $eq: ["$status", "actif"] }, then: STATUS_SORT_RANK.actif },
+                  ],
+                  default: 99,
+                },
+              },
+            },
+          },
+          { $sort: { _statusRank: dir } },
+          { $skip: (pageNum - 1) * limitNum },
+          { $limit: limitNum },
+          { $project: { _statusRank: 0 } },
+        ]),
+        Contact.countDocuments(filter),
+      ]);
+    } else {
+      // "name" sorts on the displayed "Prénom Nom" order: firstName first,
+      // lastName as a tiebreaker for same-first-name contacts.
+      const sort =
+        sortField === "name"
+          ? { firstName: dir, lastName: dir }
+          : sortField
+            ? { [sortField]: dir }
+            : { createdAt: -1 };
+      [contacts, total] = await Promise.all([
+        Contact.find(filter).sort(sort).skip((pageNum - 1) * limitNum).limit(limitNum),
+        Contact.countDocuments(filter),
+      ]);
+    }
     res.json({ contacts, total, page: pageNum, limit: limitNum });
   } catch (err) {
     next(err);

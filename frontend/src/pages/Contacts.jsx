@@ -23,6 +23,20 @@ function CompanyLogo({ company, domain }) {
   );
 }
 
+// Clickable column header: arrow shows nothing when this column isn't the
+// active sort, ▲/▼ once it is. "Entreprise"/"Catégorie" sort A→Z then Z→A;
+// "Statut" instead orders à recontacter → inactif → actif, then reversed —
+// that distinction lives in the backend sort, this button is just the toggle.
+function SortButton({ field, sortBy, sortDir, onClick, children }) {
+  const active = sortBy === field;
+  return (
+    <button type="button" onClick={() => onClick(field)} className="flex items-center gap-1 hover:text-ink-900">
+      {children}
+      <span className="text-[10px] text-ink-500">{active ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
+    </button>
+  );
+}
+
 const STATUS_OPTIONS = [
   { value: "", label: "Tous les statuts" },
   { value: "actif", label: "Actif" },
@@ -69,6 +83,19 @@ export default function Contacts() {
   const [categoryStats, setCategoryStats] = useState(null); // [{category,count}] for the tab bar
   const [allContacts, setAllContacts] = useState(null); // unpaginated, for the side panel's mini network graph
   const [companyDomains, setCompanyDomains] = useState(new Map()); // resolved via Brand Search, for CompanyLogo
+  const [sortBy, setSortBy] = useState(null); // "company" | "category" | "status" | null
+  const [sortDir, setSortDir] = useState("asc");
+
+  // Clicking a sortable column: switches to it ascending, or flips direction
+  // if it's already the active column.
+  function toggleSort(field) {
+    if (sortBy === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortDir("asc");
+    }
+  }
 
   useEffect(() => {
     const names = contacts.map((c) => c.company?.trim()).filter(Boolean);
@@ -87,7 +114,7 @@ export default function Contacts() {
   useEffect(() => {
     const timeout = setTimeout(() => setPage(1), 0);
     return () => clearTimeout(timeout);
-  }, [search, category, status]);
+  }, [search, category, status, sortBy, sortDir]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -97,6 +124,10 @@ export default function Contacts() {
       if (search) params.set("search", search);
       if (category) params.set("category", category);
       if (status) params.set("status", status);
+      if (sortBy) {
+        params.set("sortBy", sortBy);
+        params.set("sortDir", sortDir);
+      }
       apiFetch(`/api/contacts?${params}`)
         .then((data) => {
           setContacts(data.contacts);
@@ -112,7 +143,7 @@ export default function Contacts() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [search, category, status, page, refreshKey]);
+  }, [search, category, status, page, sortBy, sortDir, refreshKey]);
 
   useEffect(() => {
     apiFetch("/api/stats")
@@ -200,10 +231,26 @@ export default function Contacts() {
               <table className="w-full min-w-[560px] text-left text-sm">
                 <thead className="border-b border-ink-300/60 bg-ink-100/60 text-ink-500">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Contact</th>
-                    <th className="px-4 py-3 font-medium">Entreprise</th>
-                    <th className="px-4 py-3 font-medium">Catégorie</th>
-                    <th className="px-4 py-3 font-medium">Statut</th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortButton field="name" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort}>
+                        Contact
+                      </SortButton>
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortButton field="company" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort}>
+                        Entreprise
+                      </SortButton>
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortButton field="category" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort}>
+                        Catégorie
+                      </SortButton>
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortButton field="status" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort}>
+                        Statut
+                      </SortButton>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
