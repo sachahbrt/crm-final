@@ -50,11 +50,13 @@ export async function getStatsByCategory(req, res, next) {
         { $match: { owner } },
         { $group: { _id: "$category", count: { $sum: 1 } } },
         { $project: { _id: 0, category: "$_id", count: 1 } },
+        { $sort: { count: -1 } },
       ]),
       Contact.aggregate([
         { $match: { owner, meetingPlace: { $nin: [null, ""] } } },
         { $group: { _id: "$meetingPlace", count: { $sum: 1 } } },
         { $project: { _id: 0, location: "$_id", count: 1 } },
+        { $sort: { count: -1 } },
       ]),
       Contact.aggregate([
         { $match: { owner, company: { $nin: [null, ""] } } },
