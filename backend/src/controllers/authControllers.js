@@ -12,6 +12,7 @@ import {
   sendTwoFactorCode,
 } from "../utils/mailer.js";
 import { signToken, signPreAuthToken, generateHashedToken, generateHashedCode } from "../utils/token.js";
+import { deleteImageByUrl } from "../utils/cloudinary.js";
 
 function toPublicUser(user) {
   return {
@@ -318,8 +319,10 @@ export async function deleteUser(req, res, next) {
       deleteAccountCodeExpires: { $gt: Date.now() },
     }).select("+deleteAccountCode +deleteAccountCodeExpires");
     if (!user) return res.status(400).json({ message: "Code invalide ou expiré" });
+    const contacts = await Contact.find({ owner: req.user.id }, "photoUrl");
     await Contact.deleteMany({ owner: req.user.id });
     await User.findByIdAndDelete(req.user.id);
+    await Promise.all(contacts.filter((c) => c.photoUrl).map((c) => deleteImageByUrl(c.photoUrl)));
     res.json({ success: true });
   } catch (err) {
     next(err);

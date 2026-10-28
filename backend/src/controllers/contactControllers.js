@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { z } from "zod";
 import Contact from "../models/Contact.js";
-import { uploadImageBuffer } from "../utils/cloudinary.js";
+import { uploadImageBuffer, deleteImageByUrl } from "../utils/cloudinary.js";
 
 const STATUSES = ["actif", "inactif", "à recontacter"];
 const SORTABLE_FIELDS = ["name", "company", "category", "status"];
@@ -131,6 +131,7 @@ export async function deleteContact(req, res, next) {
   try {
     const contact = await Contact.findOneAndDelete({ _id: req.params.id, owner: req.user.id });
     if (!contact) return res.status(404).json({ message: "Contact introuvable" });
+    if (contact.photoUrl) await deleteImageByUrl(contact.photoUrl);
     res.json({ success: true });
   } catch (err) {
     next(err);
