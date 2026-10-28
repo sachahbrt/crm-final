@@ -12,7 +12,7 @@ export default function Settings() {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const [profile, setProfile] = useState({ firstName: user?.firstName || "", lastName: user?.lastName || "" });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -80,19 +80,6 @@ export default function Settings() {
     }
   }
 
-  async function handleDelete() {
-    if (!window.confirm("Supprimer définitivement ton compte et tous tes contacts ? Cette action est irréversible.")) return;
-    setDeleting(true);
-    try {
-      await apiFetch("/api/auth/me", { method: "DELETE" });
-      await logout();
-      navigate("/login");
-      toast.success("Compte supprimé");
-    } catch (err) {
-      toast.error(err.message);
-      setDeleting(false);
-    }
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -234,15 +221,136 @@ export default function Settings() {
               </button>
               <button
                 type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                onClick={() => setDeleteModalOpen(true)}
+                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
               >
-                {deleting ? "Suppression…" : "Supprimer mon compte"}
+                Supprimer mon compte
               </button>
             </div>
           </div>
         </div>
+      </div>
+
+      {deleteModalOpen && (
+        <DeleteAccountModal
+          onClose={() => setDeleteModalOpen(false)}
+          onDeleted={async () => {
+            await logout();
+            navigate("/login");
+            toast.success("Compte supprimé");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Two-step flow: request a code by email, then type it in to confirm —
+// replaces a plain window.confirm() with a real "proof you own this inbox"
+// check before an irreversible delete.
+function DeleteAccountModal({ onClose, onDeleted }) {
+  const [step, setStep] = useState("confirm"); // "confirm" | "code"
+  const [sending, setSending] = useState(false);
+  const [code, setCode] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleSendCode() {
+    setSending(true);
+    try {
+      await apiFetch("/api/auth/me/delete/request", { method: "POST" });
+      toast.success("Code envoyé par email");
+      setStep("code");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleConfirmDelete(e) {
+    e.preventDefault();
+    setDeleting(true);
+    try {
+      await apiFetch("/api/auth/me", { method: "DELETE", body: { code } });
+      await onDeleted();
+    } catch (err) {
+      toast.error(err.message);
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-ink-900">Supprimer mon compte</h3>
+          <button type="button" onClick={onClose} className="text-ink-500 hover:text-ink-900">
+            ✕
+          </button>
+        </div>
+
+        {step === "confirm" ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm leading-relaxed text-ink-700">
+              Cette action supprimera définitivement ton compte et tous tes contacts. Elle est irréversible. Un
+              code de confirmation te sera envoyé par email.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-ink-300 px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleSendCode}
+                disabled={sending}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {sending ? "Envoi…" : "Envoyer le code"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleConfirmDelete} className="flex flex-col gap-4">
+            <p className="text-sm leading-relaxed text-ink-700">
+              Entre le code à 6 chiffres envoyé à <span className="font-semibold">ton adresse email</span> pour
+              confirmer la suppression définitive de ton compte.
+            </p>
+            <input
+              autoFocus
+              required
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              placeholder="000000"
+              className="w-full rounded-lg border border-ink-300 px-3 py-2 text-center text-lg font-bold tracking-[0.4em] text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-ink-300 px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-ink-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                disabled={deleting || code.length !== 6}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleting ? "Suppression…" : "Confirmer la suppression"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

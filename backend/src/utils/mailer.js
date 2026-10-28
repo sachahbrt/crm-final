@@ -14,7 +14,10 @@ function getTransporter() {
 // change confirmation) — only title/text/button differ. Colors match the
 // site's current "LockList" palette (frontend/src/index.css custom
 // properties) — keep these in sync if that palette changes.
-function emailTemplate({ title, text, buttonLabel, buttonUrl }) {
+// `code` mode (no buttonUrl) renders a big static code block instead of a
+// clickable button, for flows where the user types the value in by hand
+// (account deletion) rather than following a link.
+function emailTemplate({ title, text, buttonLabel, buttonUrl, code }) {
   return `
 <meta charset="utf-8">
 <body style="margin:0;padding:32px 16px;background:#F7F5F0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
@@ -37,7 +40,14 @@ function emailTemplate({ title, text, buttonLabel, buttonUrl }) {
         </p>
       </td>
     </tr>
-    <tr>
+    ${
+      code
+        ? `<tr>
+      <td style="padding:0 32px 28px;text-align:center;">
+        <span style="display:inline-block;background:#F7F5F0;border:1px solid #E2DED2;border-radius:8px;padding:14px 24px;font-size:28px;font-weight:700;letter-spacing:6px;color:#15202E;">${code}</span>
+      </td>
+    </tr>`
+        : `<tr>
       <td style="padding:0 32px 28px;text-align:center;">
         <a href="${buttonUrl}" style="display:inline-block;background:#C08A2E;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:8px;">
           ${buttonLabel}
@@ -51,7 +61,8 @@ function emailTemplate({ title, text, buttonLabel, buttonUrl }) {
           <a href="${buttonUrl}" style="color:#C08A2E;word-break:break-all;">${buttonUrl}</a>
         </p>
       </td>
-    </tr>
+    </tr>`
+    }
     <tr>
       <td style="padding:16px 32px;border-top:1px solid #E2DED2;text-align:center;">
         <p style="margin:0;font-size:12px;color:#5B5F6B;">
@@ -91,6 +102,19 @@ export async function sendPasswordChangedEmail(to) {
       text: "Le mot de passe de ton compte LockList vient d'être modifié. Si ce n'est pas toi, contacte-nous immédiatement.",
       buttonLabel: "Accéder à mon compte",
       buttonUrl: loginUrl,
+    }),
+  });
+}
+
+export async function sendDeleteAccountCode(to, code) {
+  await getTransporter().sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to,
+    subject: "Code de confirmation de suppression de compte",
+    html: emailTemplate({
+      title: "Confirme la suppression de ton compte",
+      text: "Pour confirmer la suppression définitive de ton compte LockList et de toutes tes données, entre ce code dans l'application. Ce code est valable 10 minutes.",
+      code,
     }),
   });
 }

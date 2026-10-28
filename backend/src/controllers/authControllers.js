@@ -3,8 +3,8 @@ import crypto from "crypto";
 import { z } from "zod";
 import User from "../models/User.js";
 import Contact from "../models/Contact.js";
-import { sendResetEmail, sendPasswordChangedEmail, sendEmailChangeVerification } from "../utils/mailer.js";
-import { signToken, generateHashedToken } from "../utils/token.js";
+import { sendResetEmail, sendPasswordChangedEmail, sendEmailChangeVerification, sendDeleteAccountCode } from "../utils/mailer.js";
+import { signToken, generateHashedToken, generateHashedCode } from "../utils/token.js";
 
 function toPublicUser(user) {
   return { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email };
@@ -200,8 +200,41 @@ export async function resetPassword(req, res, next) {
   }
 }
 
+export async function requestAccountDeletion(req, res, next) {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+    const { code, hashed, expires } = generateHashedCode();
+    user.deleteAccountCode = hashed;
+    user.deleteAccountCodeExpires = expires;
+    await user.save();
+    try {
+      await sendDeleteAccountCode(user.email, code);
+    } catch (mailErr) {
+      // Unlike forgotPassword, there's no "account exists" to hide here — the
+      // user is already authenticated — so a mail failure is surfaced rather
+      // than silently reported as sent, since the code is the only way in.
+      console.error("sendDeleteAccountCode failed:", mailErr.response || mailErr.message);
+      return res.status(502).json({ message: "Impossible d'envoyer le code de confirmation" });
+    }
+    res.json({ message: "Code de confirmation envoyé par email" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const deleteAccountSchema = z.object({ code: z.string().length(6) });
+
 export async function deleteUser(req, res, next) {
   try {
+    const { code } = deleteAccountSchema.parse(req.body);
+    const hashedCode = crypto.createHash("sha256").update(code).digest("hex");
+    const user = await User.findOne({
+      _id: req.user.id,
+      deleteAccountCode: hashedCode,
+      deleteAccountCodeExpires: { $gt: Date.now() },
+    }).select("+deleteAccountCode +deleteAccountCodeExpires");
+    if (!user) return res.status(400).json({ message: "Code invalide ou expiré" });
     await Contact.deleteMany({ owner: req.user.id });
     await User.findByIdAndDelete(req.user.id);
     res.json({ success: true });

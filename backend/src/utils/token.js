@@ -15,3 +15,11 @@ export function generateHashedToken(ttlMs = 60 * 60 * 1000) {
   const hashed = crypto.createHash("sha256").update(raw).digest("hex");
   return { raw, hashed, expires: Date.now() + ttlMs };
 }
+
+// Same idea, but a short numeric code a user types in by hand instead of a
+// URL token — used for the account-deletion email confirmation.
+export function generateHashedCode(ttlMs = 10 * 60 * 1000) {
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+  const hashed = crypto.createHash("sha256").update(code).digest("hex");
+  return { code, hashed, expires: Date.now() + ttlMs };
+}

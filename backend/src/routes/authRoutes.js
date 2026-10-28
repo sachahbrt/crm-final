@@ -4,6 +4,7 @@ import {
   connectUser,
   disconnectUser,
   createUser,
+  requestAccountDeletion,
   deleteUser,
   forgotPassword,
   resetPassword,
@@ -52,6 +53,7 @@ router.put("/me/password", requireAuth, changePassword);
 router.post("/me/email", requireAuth, requestEmailChange);
 router.post("/confirm-email/:token", confirmEmailChange);
 router.get("/me/export", requireAuth, exportMyData);
+router.post("/me/delete/request", requireAuth, authLimiter, requestAccountDeletion);
 router.delete("/me", requireAuth, deleteUser);
 
 export default router;
